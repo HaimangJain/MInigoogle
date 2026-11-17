@@ -1,0 +1,1899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini Google – Understanding Google's PageRank Algorithm</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            gblue: '#4285F4',
+            gred: '#EA4335',
+            gyellow: '#FBBC05',
+            ggreen: '#34A853',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #ffffff;
+      color: #202124;
+      overflow-x: hidden;
+    }
+
+    /* Google-inspired search bar shadow */
+    .google-search-bar {
+      box-shadow: 0 1px 6px rgba(32, 33, 36, 0.16);
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .google-search-bar:hover,
+    .google-search-bar:focus-within {
+      box-shadow: 0 2px 12px rgba(66, 133, 244, 0.22);
+      border-color: rgba(66, 133, 244, 0.45);
+    }
+
+    /* Custom subtle scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f8f9fa;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #dadce0;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #bdc1c6;
+    }
+
+    /* Node transition in SVG */
+    .graph-node-circle {
+      transition: r 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), fill 0.25s ease, stroke-width 0.2s ease;
+    }
+
+    .graph-edge {
+      transition: stroke 0.25s ease, stroke-width 0.25s ease, opacity 0.25s ease;
+    }
+
+    @keyframes pulseRing {
+      0% { transform: scale(1); opacity: 0.75; }
+      100% { transform: scale(1.45); opacity: 0; }
+    }
+
+    .pulse-ring {
+      transform-origin: center;
+      transform-box: fill-box;
+      animation: pulseRing 1.8s infinite ease-out;
+    }
+
+    .tab-active {
+      color: #1a73e8;
+      border-bottom: 3px solid #1a73e8;
+      background-color: #f1f6fe;
+    }
+  </style>
+</head>
+<body class="bg-white text-slate-800 antialiased selection:bg-blue-100 selection:text-blue-900">
+
+  <!-- Top Navigation Header -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center font-extrabold text-xl sm:text-2xl tracking-tight select-none cursor-pointer" onclick="window.scrollTo({top:0, behavior:'smooth'})">
+          <span class="text-[#4285F4]">M</span>
+          <span class="text-[#EA4335]">i</span>
+          <span class="text-[#FBBC05]">n</span>
+          <span class="text-[#4285F4]">i</span>
+          <span class="mx-1"></span>
+          <span class="text-[#4285F4]">G</span>
+          <span class="text-[#EA4335]">o</span>
+          <span class="text-[#FBBC05]">o</span>
+          <span class="text-[#4285F4]">g</span>
+          <span class="text-[#34A853]">l</span>
+          <span class="text-[#EA4335]">e</span>
+        </div>
+        <span class="hidden md:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+          PageRank Lab
+        </span>
+      </div>
+
+      <nav class="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium text-slate-600">
+        <a href="#comparison-section" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition">Comparison</a>
+        <a href="#graph-section" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition">Link Graph</a>
+        <a href="#websites-section" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition">6 Websites</a>
+        <a href="#learn-section" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition">How It Works</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Toast Notification Banner (Replaces alert) -->
+  <div id="toastBanner" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-300 translate-y-2 opacity-0">
+    <div class="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 text-sm font-medium border border-slate-700">
+      <span id="toastIcon" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+      <span id="toastMessage">Updated rankings</span>
+    </div>
+  </div>
+
+  <!-- Hero Search Section -->
+  <section class="bg-gradient-to-b from-blue-50/50 via-white to-white pt-8 pb-6 px-4 sm:px-6 lg:px-8 border-b border-slate-100">
+    <div class="max-w-4xl mx-auto text-center">
+      <!-- Big Google-style Title -->
+      <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mb-2 select-none">
+        <span class="text-[#4285F4]">M</span><span class="text-[#EA4335]">i</span><span class="text-[#FBBC05]">n</span><span class="text-[#4285F4]">i</span>
+        <span class="text-[#4285F4]">G</span><span class="text-[#EA4335]">o</span><span class="text-[#FBBC05]">o</span><span class="text-[#4285F4]">g</span><span class="text-[#34A853]">l</span><span class="text-[#EA4335]">e</span>
+      </h1>
+      <p class="text-slate-600 text-sm sm:text-base max-w-2xl mx-auto mb-6">
+        Experiment with <strong>6 interconnected websites</strong> to see why traditional <em>Keyword Counting</em> is easily tricked by spam—and how Larry Page &amp; Sergey Brin's <strong>PageRank</strong> revolutionized web search using link authority.
+      </p>
+
+      <!-- Search Input Box -->
+      <div class="max-w-2xl mx-auto">
+        <div class="google-search-bar flex items-center bg-white border border-slate-200 rounded-full px-4 py-2.5 sm:py-3">
+          <svg class="w-5 h-5 text-slate-400 mr-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            id="searchInput"
+            type="text"
+            value="artificial intelligence"
+            placeholder="Enter a search query (e.g., artificial intelligence, python, tutorial)..."
+            class="w-full text-slate-800 text-base sm:text-lg focus:outline-none bg-transparent"
+          />
+          <button
+            id="clearSearchBtn"
+            title="Clear query"
+            class="text-slate-400 hover:text-slate-600 p-1 rounded-full transition"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Primary Action & Quick Query Chips -->
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+          <button
+            id="compareBtn"
+            class="bg-[#4285F4] hover:bg-blue-600 active:scale-[0.99] text-white font-semibold px-6 py-2.5 rounded-full shadow-sm hover:shadow transition flex items-center gap-2 text-sm sm:text-base"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Compare Search Algorithms
+          </button>
+
+          <button
+            id="animateFlowHeroBtn"
+            class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-medium px-4 py-2.5 rounded-full shadow-2xs transition flex items-center gap-2 text-sm"
+          >
+            <span class="w-2 h-2 rounded-full bg-[#34A853] animate-ping"></span>
+            Visualize PageRank Flow
+          </button>
+        </div>
+
+        <!-- Suggested Query Chips -->
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-1.5 text-xs">
+          <span class="text-slate-400 mr-1">Try queries:</span>
+          <button class="query-chip px-3 py-1 rounded-full bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 font-medium transition" data-query="artificial intelligence">artificial intelligence</button>
+          <button class="query-chip px-3 py-1 rounded-full bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 font-medium transition" data-query="machine learning">machine learning</button>
+          <button class="query-chip px-3 py-1 rounded-full bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 font-medium transition" data-query="research">research</button>
+          <button class="query-chip px-3 py-1 rounded-full bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 font-medium transition" data-query="neural networks">neural networks</button>
+        </div>
+      </div>
+
+      <!-- Preset Network Scenarios -->
+      <div class="mt-6 pt-5 border-t border-slate-100 flex flex-wrap items-center justify-center gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 mr-1">Load Experiment Preset:</span>
+        <button id="presetSpamBtn" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition">
+          1. Keyword Stuffing Spam vs Authority
+        </button>
+        <button id="presetDanglingBtn" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100 transition">
+          2. Dangling Node (Dead-End) Trap
+        </button>
+        <button id="presetHubBtn" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition">
+          3. Star Authority &amp; Citation Loop
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Dashboard Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+
+    <!-- SECTION 1: SIDE-BY-SIDE COMPARISON DASHBOARD -->
+    <section id="comparison-section" class="scroll-mt-20">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+        <div>
+          <div class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-600 mb-1">
+            <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+            Core Experiment Results
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">Side-by-Side Ranking Comparison</h2>
+          <p class="text-sm text-slate-500 mt-1">
+            Query: <span id="activeQueryBadge" class="font-mono font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">"artificial intelligence"</span>
+            &bull; Highlighted rows show websites whose rank shifts by <strong>2 or more positions</strong>.
+          </p>
+        </div>
+
+        <!-- Convergence Summary Pill -->
+        <div class="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-xs">
+          <div>
+            <span class="text-slate-500">Damping (<span class="font-mono">d</span>):</span>
+            <span id="summaryDamping" class="font-mono font-bold text-slate-800">0.85</span>
+          </div>
+          <span class="text-slate-300">|</span>
+          <div>
+            <span class="text-slate-500">Converged in:</span>
+            <span id="summaryIterations" class="font-mono font-bold text-emerald-600">24 iters</span>
+          </div>
+          <span class="text-slate-300">|</span>
+          <div>
+            <span class="text-slate-500">Sum(PR):</span>
+            <span id="summaryPrSum" class="font-mono font-bold text-blue-600">6.0000</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two Columns: Left (Old Google) vs Right (PageRank) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- LEFT: OLD GOOGLE-STYLE SYSTEM -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+          <div class="bg-gradient-to-r from-amber-50 to-orange-50/60 border-b border-amber-200/70 px-5 py-4 flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md">1996 Era Approach</span>
+              <h3 class="text-lg font-bold text-slate-900 mt-1 flex items-center gap-2">
+                OLD GOOGLE-STYLE SYSTEM
+              </h3>
+              <p class="text-xs text-slate-600">Ranks purely by keyword frequency in Title (3×), Desc (2×) &amp; Content (1×)</p>
+            </div>
+            <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-lg shrink-0">
+              Aa
+            </div>
+          </div>
+
+          <div id="oldRankingList" class="p-4 space-y-3 flex-1">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- RIGHT: PAGERANK-BASED SYSTEM -->
+        <div class="bg-white rounded-2xl border border-blue-200 shadow-xs overflow-hidden flex flex-col">
+          <div class="bg-gradient-to-r from-blue-50 to-indigo-50/60 border-b border-blue-200/70 px-5 py-4 flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">1998 Larry Page &amp; Sergey Brin</span>
+              <h3 class="text-lg font-bold text-slate-900 mt-1 flex items-center gap-2">
+                PAGERANK-BASED SYSTEM
+              </h3>
+              <p class="text-xs text-slate-600">Ranks by link graph authority: <span class="font-mono text-[11px]">PR(A) = (1-d) + d &Sigma;(PR(Ti)/C(Ti))</span></p>
+            </div>
+            <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">
+              PR
+            </div>
+          </div>
+
+          <div id="prRankingList" class="p-4 space-y-3 flex-1">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Visual Comparison Bar Chart -->
+      <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <h4 class="text-base font-bold text-slate-900">Normalized Score Comparison Chart (0 – 100 Scale)</h4>
+            <p class="text-xs text-slate-500">Visualizing how keyword stuffing inflates Old Search scores while PageRank rewards trusted incoming links.</p>
+          </div>
+          <div class="flex items-center gap-4 text-xs font-medium">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-amber-400 inline-block"></span> Old Keyword Score</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-[#4285F4] inline-block"></span> PageRank Score</span>
+          </div>
+        </div>
+        <div id="comparisonBarChart" class="space-y-3">
+          <!-- Dynamically populated horizontal comparative bars -->
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: INTERACTIVE DIRECTED GRAPH & PAGERANK CONTROLS -->
+    <section id="graph-section" class="scroll-mt-20">
+      <div class="mb-6">
+        <div class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+          Interactive Link Topology
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">Interactive Network Graph &amp; Link Matrix</h2>
+        <p class="text-sm text-slate-500 mt-1">
+          Node radius reflects PageRank score. <strong>Drag nodes</strong> to rearrange, <strong>click a node then another node</strong> to add/remove a hyperlink, or use the matrix on the right.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <!-- Interactive SVG Network Canvas (7 cols) -->
+        <div class="xl:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col overflow-hidden">
+          <!-- Graph Toolbar -->
+          <div class="bg-slate-50 border-b border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <button id="toggleLinkModeBtn" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:border-blue-400 hover:text-blue-600 transition flex items-center gap-1.5 shadow-2xs">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                <span id="linkModeLabel">Click-to-Link: Ready</span>
+              </button>
+
+              <button id="animateFlowBtn" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#34A853] hover:bg-emerald-600 text-white transition flex items-center gap-1.5 shadow-2xs">
+                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                </svg>
+                Animate Flow
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button id="resetLayoutBtn" class="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/70 transition">
+                Reset Circle Layout
+              </button>
+              <button id="clearAllLinksBtn" class="px-2.5 py-1.5 rounded-xl text-xs font-medium text-red-600 hover:bg-red-50 transition">
+                Clear Links
+              </button>
+            </div>
+          </div>
+
+          <!-- Status Instruction Bar -->
+          <div id="graphInstructionBar" class="bg-blue-50/70 border-b border-blue-100 px-4 py-2 text-xs text-blue-800 flex items-center justify-between">
+            <span>Tip: Click any website circle to select it as a <strong>Source</strong>, then click a second website to toggle a directed arrow.</span>
+            <button id="cancelSelectionBtn" class="hidden text-blue-700 underline font-semibold ml-2">Cancel</button>
+          </div>
+
+          <!-- Responsive SVG Canvas Container -->
+          <div id="svgContainer" class="relative w-full h-[430px] sm:h-[470px] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] select-none overflow-hidden">
+            <svg id="networkSvg" class="w-full h-full block" viewBox="0 0 700 470" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <!-- Standard Arrowhead -->
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                  <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+                </marker>
+                <!-- Highlighted Arrowhead -->
+                <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                  <polygon points="0 0, 10 3.5, 0 7" fill="#4285F4" />
+                </marker>
+                <!-- Soft Drop Shadow -->
+                <filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.12" />
+                </filter>
+              </defs>
+
+              <!-- Edges Layer -->
+              <g id="edgesLayer"></g>
+              <!-- Flow Animation Particles Layer -->
+              <g id="particlesLayer"></g>
+              <!-- Nodes Layer -->
+              <g id="nodesLayer"></g>
+            </svg>
+          </div>
+
+          <!-- Bottom Legend -->
+          <div class="bg-slate-50 border-t border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+            <div class="flex items-center gap-3">
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#4285F4] inline-block"></span> High PR</span>
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#34A853] inline-block"></span> Medium PR</span>
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#EA4335] inline-block"></span> Dangling Node (0 Outgoing)</span>
+            </div>
+            <span>Circle size &prop; PageRank score</span>
+          </div>
+        </div>
+
+        <!-- Right Controls: Algorithm Parameters + Adjacency Matrix + Live Equation Inspector (5 cols) -->
+        <div class="xl:col-span-5 space-y-6">
+          <!-- PageRank Algorithm Controls -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-base font-bold text-slate-900">PageRank Engine Controls</h3>
+              <span class="font-mono text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg font-semibold">
+                Iter: <span id="controlIterCount">0</span> / 100
+              </span>
+            </div>
+
+            <!-- Damping Factor Slider -->
+            <div class="mb-4">
+              <div class="flex justify-between text-xs font-medium mb-1">
+                <label for="dampingSlider" class="text-slate-700">Damping Factor (<span class="font-mono font-bold">d</span>)</label>
+                <span id="dampingValueLabel" class="font-mono font-bold text-blue-600">0.85</span>
+              </div>
+              <input id="dampingSlider" type="range" min="0.10" max="0.99" step="0.01" value="0.85" class="w-full accent-[#4285F4] cursor-pointer" />
+              <div class="flex justify-between text-[11px] text-slate-400 mt-0.5">
+                <span>0.10 (Random jumps)</span>
+                <span>0.85 (Google standard)</span>
+                <span>0.99 (Follow links)</span>
+              </div>
+            </div>
+
+            <!-- Step-by-Step Iteration Buttons -->
+            <div class="grid grid-cols-3 gap-2">
+              <button id="resetPrBtn" class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
+                Reset (PR=1.0)
+              </button>
+              <button id="stepPrBtn" class="px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">
+                +1 Iteration
+              </button>
+              <button id="convergePrBtn" class="px-3 py-2 rounded-xl text-xs font-semibold bg-[#4285F4] hover:bg-blue-600 text-white transition">
+                Converge All
+              </button>
+            </div>
+          </div>
+
+          <!-- Interactive Adjacency Matrix (From Row -> To Column) -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-base font-bold text-slate-900">Hyperlink Connection Matrix</h3>
+              <span class="text-[11px] text-slate-500">Row links &rarr; Column</span>
+            </div>
+            <p class="text-xs text-slate-500 mb-3">Toggle checkboxes to add or remove outgoing hyperlinks between the 6 websites.</p>
+
+            <div class="overflow-x-auto">
+              <table id="adjacencyMatrixTable" class="w-full text-center border-collapse text-xs">
+                <!-- Populated dynamically -->
+              </table>
+            </div>
+          </div>
+
+          <!-- Live Math Inspector for Selected Website -->
+          <div class="bg-slate-900 text-slate-100 rounded-2xl p-5 shadow-xs border border-slate-800">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-blue-400">Live Formula Inspector</span>
+              <select id="inspectorSiteSelect" class="bg-slate-800 text-white text-xs rounded-lg px-2.5 py-1 border border-slate-700 focus:outline-none">
+                <!-- Options populated dynamically -->
+              </select>
+            </div>
+            <div id="liveEquationBox" class="font-mono text-xs leading-relaxed text-slate-300 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 overflow-x-auto">
+              <!-- Live step-by-step math breakdown -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: 6 WEBSITES CONFIGURATION EDITOR -->
+    <section id="websites-section" class="scroll-mt-20">
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+        <div>
+          <div class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-600 mb-1">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+            Editable Web Corpus (N = 6)
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">Configure the 6 Websites</h2>
+          <p class="text-sm text-slate-500 mt-1">
+            Edit any website's URL, Title, Description, or Keywords/Content below. Changes immediately recalculate both search engines.
+          </p>
+        </div>
+      </div>
+
+      <div id="websiteCardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- 6 Website Editor Cards populated dynamically -->
+      </div>
+    </section>
+
+    <!-- SECTION 4: EDUCATIONAL & LEARNING GUIDE -->
+    <section id="learn-section" class="scroll-mt-20 pb-10">
+      <div class="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+        <div class="bg-gradient-to-r from-slate-50 via-blue-50/50 to-slate-50 border-b border-slate-200 px-6 py-6">
+          <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 mb-2">
+            Computer Science &amp; Information Retrieval
+          </span>
+          <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">How Search Engines Evolved: From Keywords to PageRank</h2>
+          <p class="text-sm text-slate-600 mt-1 max-w-3xl">
+            Explore the core concepts behind early search engines, web spam manipulation, and the mathematical breakthrough made at Stanford University in 1998.
+          </p>
+        </div>
+
+        <!-- Educational Topic Tabs -->
+        <div class="flex overflow-x-auto border-b border-slate-200 bg-white px-2">
+          <button class="edu-tab tab-active px-4 py-3.5 text-xs sm:text-sm font-semibold whitespace-nowrap transition" data-tab="tab-early">
+            1. Early Keyword Search
+          </button>
+          <button class="edu-tab px-4 py-3.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap transition" data-tab="tab-spam">
+            2. Keyword Manipulation
+          </button>
+          <button class="edu-tab px-4 py-3.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap transition" data-tab="tab-pagerank">
+            3. Birth of PageRank
+          </button>
+          <button class="edu-tab px-4 py-3.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap transition" data-tab="tab-links">
+            4. Links as Votes &amp; Math
+          </button>
+          <button class="edu-tab px-4 py-3.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap transition" data-tab="tab-modern">
+            5. Modern Google Today
+          </button>
+        </div>
+
+        <!-- Educational Tab Panels -->
+        <div class="p-6 sm:p-8 text-slate-700 leading-relaxed text-sm sm:text-base">
+          <!-- Tab 1 -->
+          <div id="tab-early" class="edu-panel space-y-4">
+            <h3 class="text-xl font-bold text-slate-900">How Early Search Engines Ranked Websites (1990–1997)</h3>
+            <p>
+              First-generation search engines like <strong>WebCrawler, Lycos, Excite, and AltaVista</strong> treated the World Wide Web like a giant digital library catalog. When a user typed a query, the engine scanned its inverted index to find pages containing those exact words.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <h4 class="font-bold text-slate-900 mb-1">Term Frequency (TF)</h4>
+                <p class="text-sm text-slate-600">If Page A repeated the word <em>"artificial intelligence"</em> 25 times and Page B mentioned it 3 times, Page A was assumed to be much more relevant—even if Page A had zero useful information.</p>
+              </div>
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <h4 class="font-bold text-slate-900 mb-1">On-Page Meta Tags</h4>
+                <p class="text-sm text-slate-600">Early engines heavily trusted HTML <code class="font-mono text-xs bg-slate-200 px-1 rounded">&lt;title&gt;</code> and <code class="font-mono text-xs bg-slate-200 px-1 rounded">&lt;meta name="keywords"&gt;</code> tags written directly by the website owner.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2 -->
+          <div id="tab-spam" class="edu-panel hidden space-y-4">
+            <h3 class="text-xl font-bold text-slate-900">Why Keyword-Based Ranking Could Be Easily Manipulated</h3>
+            <p>
+              Because early algorithms only examined <strong>what a webpage claimed about itself</strong>, dishonest website operators quickly discovered how to game the system—a practice known as <strong>Spamdexing</strong>.
+            </p>
+            <ul class="list-disc pl-5 space-y-2 text-slate-600">
+              <li><strong>Keyword Stuffing:</strong> Repeating popular search terms dozens of times in titles, descriptions, and paragraphs (try Preset #1 above to see <code class="font-mono text-xs bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">ai-cheap-deals.biz</code> take #1 in Old Search!).</li>
+              <li><strong>Invisible Text:</strong> Writing white text on a white background filled with hundreds of unrelated trending keywords so humans couldn't see it, but search crawlers indexed it.</li>
+              <li><strong>Meta-Tag Hijacking:</strong> Copying the keywords of famous brands or universities into unrelated websites to steal search traffic.</li>
+            </ul>
+          </div>
+
+          <!-- Tab 3 -->
+          <div id="tab-pagerank" class="edu-panel hidden space-y-4">
+            <h3 class="text-xl font-bold text-slate-900">How Larry Page and Sergey Brin Introduced PageRank (1998)</h3>
+            <p>
+              While Ph.D. students at Stanford University, <strong>Larry Page</strong> and <strong>Sergey Brin</strong> realized that academic research papers already solved a similar problem: a paper's importance isn't judged by how many times the author repeats a word, but by <strong>how many other respected papers cite it</strong>.
+            </p>
+            <div class="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+              <h4 class="font-bold text-blue-950 mb-1">The "Random Surfer" Intuition</h4>
+              <p class="text-sm text-blue-900">
+                Imagine a user randomly clicking hyperlinks on the web. With probability <strong>d = 0.85</strong> (the damping factor), they click a random outgoing link on the current page. With probability <strong>1 - d = 0.15</strong>, they get bored and jump to a completely random webpage. A page's <strong>PageRank</strong> measures the long-run probability that this random surfer lands on that page!
+              </p>
+            </div>
+          </div>
+
+          <!-- Tab 4 -->
+          <div id="tab-links" class="edu-panel hidden space-y-4">
+            <h3 class="text-xl font-bold text-slate-900">Why Links Act as Signals of Website Importance</h3>
+            <p>
+              In PageRank, a hyperlink from Website <strong>T<sub>i</sub></strong> to Website <strong>A</strong> acts as a <em>vote of confidence</em>. However, not all votes are equal:
+            </p>
+            <div class="bg-slate-900 text-white font-mono text-sm p-4 rounded-2xl overflow-x-auto">
+              PR(A) = (1 - d) + d &times; &Sigma; ( PR(T<sub>i</sub>) / C(T<sub>i</sub>) )
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div class="font-bold text-slate-900 mb-1">1. Voter Authority: PR(T<sub>i</sub>)</div>
+                <p class="text-xs text-slate-600">A link from a prestigious site like Stanford or Wikipedia passes far more authority than a link from an obscure blog nobody links to.</p>
+              </div>
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div class="font-bold text-slate-900 mb-1">2. Link Dilution: 1 / C(T<sub>i</sub>)</div>
+                <p class="text-xs text-slate-600">If a hub links to 100 websites, its PageRank vote is divided by 100. A curated page linking to only 2 sites passes half its rank to each.</p>
+              </div>
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div class="font-bold text-slate-900 mb-1">3. Dangling Nodes</div>
+                <p class="text-xs text-slate-600">Pages with 0 outgoing links are "dead ends." In the random surfer model, their PageRank is redistributed evenly across all pages so rank doesn't leak out of the graph.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 5 -->
+          <div id="tab-modern" class="edu-panel hidden space-y-4">
+            <h3 class="text-xl font-bold text-slate-900">How PageRank Differs from Overall Modern Google Ranking</h3>
+            <p>
+              While PageRank remains a foundational component of Google's link analysis, modern Google Search evaluates <strong>hundreds of signals</strong> in milliseconds:
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="p-4 rounded-2xl border border-slate-200">
+                <h4 class="font-bold text-slate-900">Semantic AI (BERT &amp; MUM)</h4>
+                <p class="text-sm text-slate-600 mt-1">Modern neural language models understand intent, synonyms, and context rather than requiring exact keyword matches.</p>
+              </div>
+              <div class="p-4 rounded-2xl border border-slate-200">
+                <h4 class="font-bold text-slate-900">E-E-A-T &amp; SpamBrain</h4>
+                <p class="text-sm text-slate-600 mt-1">Google evaluates Experience, Expertise, Authoritativeness, and Trustworthiness, actively neutralizing paid link schemes.</p>
+              </div>
+              <div class="p-4 rounded-2xl border border-slate-200">
+                <h4 class="font-bold text-slate-900">Page Experience &amp; Mobile</h4>
+                <p class="text-sm text-slate-600 mt-1">Core Web Vitals (loading speed, visual stability), HTTPS security, and mobile-friendliness directly influence rankings.</p>
+              </div>
+              <div class="p-4 rounded-2xl border border-slate-200">
+                <h4 class="font-bold text-slate-900">Query + Link Fusion</h4>
+                <p class="text-sm text-slate-600 mt-1">Pure PageRank is query-independent (global authority). Modern search combines query relevance with link authority and freshness.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-200 bg-slate-50 py-6 px-4 text-center text-xs text-slate-500">
+    <p><strong>Mini Google</strong> &mdash; Interactive Educational Simulation of Keyword Search vs. Larry Page &amp; Sergey Brin's PageRank Algorithm.</p>
+  </footer>
+
+  <!-- Main JavaScript Application Logic -->
+  <script>
+    /**
+     * MINI GOOGLE - PAGERANK EDUCATIONAL SIMULATOR
+     * Pure client-side implementation of:
+     * 1. Traditional Weighted Keyword Frequency Search Engine
+     * 2. Iterative PageRank Algorithm with Dangling Node Handling:
+     *    PR(A) = (1 - d) + d * ( Σ(PR(Ti) / C(Ti)) + Σ(PR(Dangling) / N) )
+     */
+
+    const NUM_SITES = 6;
+
+    // Color palette for the 6 nodes
+    const NODE_COLORS = [
+      '#4285F4', // Google Blue
+      '#34A853', // Google Green
+      '#EA4335', // Google Red
+      '#FBBC05', // Google Yellow/Amber
+      '#8E24AA', // Purple
+      '#00ACC1'  // Teal
+    ];
+
+    // Preset Scenarios so users can immediately observe dramatic ranking shifts
+    const PRESETS = {
+      spam: {
+        name: 'Keyword Stuffing Spam vs Authority',
+        query: 'artificial intelligence',
+        damping: 0.85,
+        sites: [
+          {
+            id: 0,
+            url: 'ai-cheap-deals.biz',
+            title: 'Artificial Intelligence Artificial Intelligence Best Artificial Intelligence',
+            description: 'Artificial intelligence artificial intelligence tools! Buy artificial intelligence software for artificial intelligence.',
+            keywords: 'artificial intelligence, artificial intelligence, artificial intelligence, free artificial intelligence, ai spam'
+          },
+          {
+            id: 1,
+            url: 'stanford-ai-lab.edu',
+            title: 'Stanford CS & Robotics Research Lab',
+            description: 'Academic publications, foundational machine learning theory, and artificial intelligence breakthroughs.',
+            keywords: 'deep learning, neural networks, computer vision, natural language processing, artificial intelligence'
+          },
+          {
+            id: 2,
+            url: 'nature-science.org',
+            title: 'Nature Journal of Computational Science',
+            description: 'Peer-reviewed scientific papers covering physics, biology, and modern computational methods.',
+            keywords: 'peer review, science, algorithms, data analysis, research papers'
+          },
+          {
+            id: 3,
+            url: 'tech-wiki.org',
+            title: 'Open Encyclopedia of Computing',
+            description: 'Community-verified articles explaining algorithms, history of computing, and artificial intelligence.',
+            keywords: 'encyclopedia, computer science, turing test, machine learning, artificial intelligence'
+          },
+          {
+            id: 4,
+            url: 'dev-weekly.io',
+            title: 'Software Engineering Weekly Digest',
+            description: 'Curated engineering tutorials, cloud architecture guides, and developer news.',
+            keywords: 'software engineering, python, web development, systems design, cloud'
+          },
+          {
+            id: 5,
+            url: 'mit-open-notes.edu',
+            title: 'Open Courseware: Algorithms & Linear Algebra',
+            description: 'Lecture notes on graph theory, eigenvectors, probability, and computational intelligence.',
+            keywords: 'linear algebra, eigenvectors, graph theory, probability, artificial intelligence'
+          }
+        ],
+        // Directed links: [from, to]
+        // Nobody links to spam site 0, while 1 & 3 receive strong authoritative citations!
+        links: [
+          [0, 1], [0, 3],
+          [1, 3], [1, 2],
+          [2, 1], [2, 3],
+          [3, 1],
+          [4, 1], [4, 3], [4, 5],
+          [5, 1], [5, 2]
+        ]
+      },
+
+      dangling: {
+        name: 'Dangling Node (Dead-End) Trap',
+        query: 'machine learning',
+        damping: 0.85,
+        sites: [
+          {
+            id: 0,
+            url: 'hub-directory.org',
+            title: 'Global Machine Learning Resource Hub',
+            description: 'Comprehensive directory linking to top machine learning papers and datasets.',
+            keywords: 'machine learning, datasets, benchmarks, directory'
+          },
+          {
+            id: 1,
+            url: 'pdf-archive-deadend.edu',
+            title: 'Archived 1998 Monograph PDF (Dead End)',
+            description: 'Static PDF document on statistical machine learning with zero outgoing hyperlinks.',
+            keywords: 'statistical learning, svm, machine learning, pdf archive'
+          },
+          {
+            id: 2,
+            url: 'ml-blog-spam.net',
+            title: 'Machine Learning Machine Learning Machine Learning Tips',
+            description: 'Machine learning hacks and machine learning buzzwords repeated for clicks.',
+            keywords: 'machine learning, machine learning, machine learning, buzzwords'
+          },
+          {
+            id: 3,
+            url: 'vision-institute.org',
+            title: 'Computer Vision & Deep Learning Institute',
+            description: 'Research group specializing in convolutional architectures and self-supervised learning.',
+            keywords: 'computer vision, deep learning, machine learning, research'
+          },
+          {
+            id: 4,
+            url: 'open-datasets.io',
+            title: 'Open Benchmark Datasets Repository',
+            description: 'Clean training and evaluation datasets for modern machine learning models.',
+            keywords: 'datasets, image recognition, benchmarks, machine learning'
+          },
+          {
+            id: 5,
+            url: 'neural-journal.org',
+            title: 'Journal of Neural Computation',
+            description: 'Quarterly academic journal publishing theoretical advances in neural networks.',
+            keywords: 'neural networks, optimization, gradient descent, theory'
+          }
+        ],
+        // Site 1 has incoming links from 0, 3, 4, 5 but ZERO outgoing links (Dangling Node!)
+        links: [
+          [0, 1], [0, 3], [0, 4],
+          [2, 0],
+          [3, 1], [3, 5],
+          [4, 1], [4, 3],
+          [5, 1], [5, 0]
+        ]
+      },
+
+      hub: {
+        name: 'Star Authority & Citation Loop',
+        query: 'research',
+        damping: 0.85,
+        sites: [
+          {
+            id: 0,
+            url: 'central-authority.edu',
+            title: 'Central University Research Portal',
+            description: 'Primary academic repository cited by every major scientific portal.',
+            keywords: 'university, faculty, publications, research'
+          },
+          {
+            id: 1,
+            url: 'physics-society.org',
+            title: 'International Physics Society',
+            description: 'Quantum mechanics, astrophysics, and experimental research findings.',
+            keywords: 'physics, quantum, astronomy, research'
+          },
+          {
+            id: 2,
+            url: 'bio-genetics.org',
+            title: 'Genomics & Computational Biology Lab',
+            description: 'Protein folding simulations and open biomedical data.',
+            keywords: 'biology, genomics, protein folding, science'
+          },
+          {
+            id: 3,
+            url: 'chemistry-index.com',
+            title: 'Molecular Chemistry Database',
+            description: 'Chemical compound properties and laboratory safety manuals.',
+            keywords: 'chemistry, molecules, periodic table, lab'
+          },
+          {
+            id: 4,
+            url: 'seo-farm-1.biz',
+            title: 'Research Research Research Best Research Portal',
+            description: 'Top research research research articles and research research links.',
+            keywords: 'research, research, research, research, research'
+          },
+          {
+            id: 5,
+            url: 'math-archive.org',
+            title: 'Archive of Pure & Applied Mathematics',
+            description: 'Preprints in topology, number theory, and stochastic processes.',
+            keywords: 'mathematics, topology, preprints, proofs'
+          }
+        ],
+        // Star topology pointing into Site 0, while SEO farm 4 only links out
+        links: [
+          [0, 1],
+          [1, 0], [1, 2],
+          [2, 0],
+          [3, 0],
+          [4, 3], [4, 5],
+          [5, 0]
+        ]
+      }
+    };
+
+    // Application State
+    const state = {
+      query: 'artificial intelligence',
+      damping: 0.85,
+      sites: [],
+      // adjacency[from][to] = boolean
+      adjacency: Array.from({ length: NUM_SITES }, () => Array(NUM_SITES).fill(false)),
+      // PageRank scores array of length 6
+      pageRanks: Array(NUM_SITES).fill(1.0),
+      iterations: 0,
+      lastDelta: 0,
+      // Graph node coordinates in SVG viewBox (700 x 470)
+      nodePositions: [],
+      selectedSourceNode: null,
+      draggingNodeId: null,
+      dragMoved: false,
+      inspectedSiteId: 0
+    };
+
+    // Initialize default circle positions for the 6 nodes
+    function computeDefaultCirclePositions() {
+      const cx = 350;
+      const cy = 235;
+      const rx = 225;
+      const ry = 160;
+      const positions = [];
+      for (let i = 0; i < NUM_SITES; i++) {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / NUM_SITES;
+        positions.push({
+          x: Math.round(cx + rx * Math.cos(angle)),
+          y: Math.round(cy + ry * Math.sin(angle))
+        });
+      }
+      return positions;
+    }
+
+    // Show subtle toast feedback
+    let toastTimer = null;
+    function showToast(message, color = 'bg-emerald-400') {
+      const banner = document.getElementById('toastBanner');
+      const msgEl = document.getElementById('toastMessage');
+      const iconEl = document.getElementById('toastIcon');
+      msgEl.textContent = message;
+      iconEl.className = `w-2.5 h-2.5 rounded-full ${color}`;
+      banner.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        banner.classList.remove('translate-y-2', 'opacity-0');
+      });
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        banner.classList.add('translate-y-2', 'opacity-0');
+        setTimeout(() => banner.classList.add('hidden'), 300);
+      }, 2400);
+    }
+
+    // Load a preset scenario
+    function loadPreset(presetKey, silent = false) {
+      const preset = PRESETS[presetKey];
+      if (!preset) return;
+
+      state.query = preset.query;
+      state.damping = preset.damping;
+      state.sites = preset.sites.map(s => ({ ...s }));
+      state.adjacency = Array.from({ length: NUM_SITES }, () => Array(NUM_SITES).fill(false));
+      preset.links.forEach(([from, to]) => {
+        if (from !== to && from >= 0 && from < NUM_SITES && to >= 0 && to < NUM_SITES) {
+          state.adjacency[from][to] = true;
+        }
+      });
+
+      document.getElementById('searchInput').value = state.query;
+      document.getElementById('dampingSlider').value = state.damping;
+      document.getElementById('dampingValueLabel').textContent = state.damping.toFixed(2);
+
+      if (state.nodePositions.length === 0) {
+        state.nodePositions = computeDefaultCirclePositions();
+      }
+
+      runPageRankToConvergence();
+      renderAll();
+
+      if (!silent) {
+        showToast(`Loaded "${preset.name}"`, 'bg-blue-400');
+      }
+    }
+
+    /**
+     * 1. OLD SEARCH ENGINE SIMULATION (Keyword-Based Relevance)
+     * Counts case-insensitive occurrences of the search query (and individual query terms)
+     * across Title (3x weight), Description (2x weight), and Keywords/Content (1x weight).
+     */
+    function computeOldSearchResults() {
+      const rawQuery = state.query.trim().toLowerCase();
+      const terms = rawQuery.split(/\s+/).filter(t => t.length > 0);
+
+      const countOccurrences = (text, sub) => {
+        if (!sub || !text) return 0;
+        const lower = text.toLowerCase();
+        let count = 0;
+        let pos = 0;
+        while ((pos = lower.indexOf(sub, pos)) !== -1) {
+          count++;
+          pos += sub.length;
+        }
+        return count;
+      };
+
+      const results = state.sites.map(site => {
+        if (!rawQuery) {
+          return {
+            siteId: site.id,
+            frequency: 0,
+            titleHits: 0,
+            descHits: 0,
+            keywordHits: 0,
+            score: 0
+          };
+        }
+
+        // Exact phrase matches
+        const titlePhrase = countOccurrences(site.title, rawQuery);
+        const descPhrase = countOccurrences(site.description, rawQuery);
+        const keyPhrase = countOccurrences(site.keywords, rawQuery);
+
+        // Also count individual term hits if multi-word query
+        let titleTermHits = 0;
+        let descTermHits = 0;
+        let keyTermHits = 0;
+
+        if (terms.length > 1) {
+          terms.forEach(term => {
+            titleTermHits += countOccurrences(site.title, term);
+            descTermHits += countOccurrences(site.description, term);
+            keyTermHits += countOccurrences(site.keywords, term);
+          });
+        } else {
+          titleTermHits = titlePhrase;
+          descTermHits = descPhrase;
+          keyTermHits = keyPhrase;
+        }
+
+        const totalFrequency = titleTermHits + descTermHits + keyTermHits;
+        // Weighted relevance score: Title (3x) + Description (2x) + Keywords (1x) + Phrase Bonus (2x)
+        const phraseBonus = terms.length > 1 ? (titlePhrase + descPhrase + keyPhrase) * 2 : 0;
+        const weightedScore = (titleTermHits * 3) + (descTermHits * 2) + (keyTermHits * 1) + phraseBonus;
+
+        return {
+          siteId: site.id,
+          frequency: totalFrequency,
+          titleHits: titleTermHits,
+          descHits: descTermHits,
+          keywordHits: keyTermHits,
+          score: weightedScore
+        };
+      });
+
+      // Sort descending by score, tie-break by frequency then siteId
+      results.sort((a, b) => b.score - a.score || b.frequency - a.frequency || a.siteId - b.siteId);
+      results.forEach((item, index) => {
+        item.rank = index + 1;
+      });
+      return results;
+    }
+
+    /**
+     * 2. MODERN PAGERANK SIMULATION (Iterative Link-Based)
+     * Formula: PR(A) = (1 - d) + d * Σ(PR(Ti) / C(Ti))
+     * Handles dangling nodes (C(Ti) === 0) by distributing their PR equally across all N nodes
+     * so total PageRank probability mass remains conserved at N (average PR = 1.0).
+     */
+    function performSinglePageRankStep() {
+      const d = state.damping;
+      const N = NUM_SITES;
+      const oldPR = [...state.pageRanks];
+      const newPR = Array(N).fill(0);
+
+      // Compute outgoing link counts C(Ti) and dangling node sum
+      const outCounts = Array(N).fill(0);
+      let danglingSum = 0;
+
+      for (let i = 0; i < N; i++) {
+        let count = 0;
+        for (let j = 0; j < N; j++) {
+          if (state.adjacency[i][j]) count++;
+        }
+        outCounts[i] = count;
+        if (count === 0) {
+          danglingSum += oldPR[i];
+        }
+      }
+
+      // Compute PR(A) for each node A
+      let maxDiff = 0;
+      for (let a = 0; a < N; a++) {
+        let incomingSum = 0;
+        for (let ti = 0; ti < N; ti++) {
+          if (state.adjacency[ti][a] && outCounts[ti] > 0) {
+            incomingSum += oldPR[ti] / outCounts[ti];
+          }
+        }
+        // Dangling node contribution: random surfer jumps equally to any of the N pages
+        const danglingContribution = danglingSum / N;
+        newPR[a] = (1 - d) + d * (incomingSum + danglingContribution);
+        maxDiff = Math.max(maxDiff, Math.abs(newPR[a] - oldPR[a]));
+      }
+
+      state.pageRanks = newPR;
+      state.iterations += 1;
+      state.lastDelta = maxDiff;
+      return maxDiff;
+    }
+
+    function resetPageRankValues() {
+      state.pageRanks = Array(NUM_SITES).fill(1.0);
+      state.iterations = 0;
+      state.lastDelta = 0;
+    }
+
+    function runPageRankToConvergence() {
+      resetPageRankValues();
+      const maxIter = 100;
+      const tolerance = 1e-6;
+      for (let iter = 0; iter < maxIter; iter++) {
+        const delta = performSinglePageRankStep();
+        if (delta < tolerance) break;
+      }
+    }
+
+    function getPageRankResults() {
+      const results = state.sites.map(site => {
+        const incomingFrom = [];
+        const outgoingTo = [];
+        for (let i = 0; i < NUM_SITES; i++) {
+          if (state.adjacency[i][site.id]) incomingFrom.push(i);
+          if (state.adjacency[site.id][i]) outgoingTo.push(i);
+        }
+        return {
+          siteId: site.id,
+          prScore: state.pageRanks[site.id],
+          incomingCount: incomingFrom.length,
+          outgoingCount: outgoingTo.length,
+          incomingFrom,
+          outgoingTo
+        };
+      });
+
+      results.sort((a, b) => b.prScore - a.prScore || b.incomingCount - a.incomingCount || a.siteId - b.siteId);
+      results.forEach((item, index) => {
+        item.rank = index + 1;
+      });
+      return results;
+    }
+
+    /**
+     * RENDERING FUNCTIONS
+     */
+    function renderAll() {
+      const oldResults = computeOldSearchResults();
+      const prResults = getPageRankResults();
+
+      // Update summary pills
+      document.getElementById('activeQueryBadge').textContent = state.query.trim() ? `"${state.query.trim()}"` : '(empty query)';
+      document.getElementById('summaryDamping').textContent = state.damping.toFixed(2);
+      document.getElementById('summaryIterations').textContent = `${state.iterations} iters`;
+      document.getElementById('controlIterCount').textContent = state.iterations;
+
+      const prSum = state.pageRanks.reduce((acc, v) => acc + v, 0);
+      document.getElementById('summaryPrSum').textContent = prSum.toFixed(4);
+
+      renderComparisonLists(oldResults, prResults);
+      renderComparisonChart(oldResults, prResults);
+      renderAdjacencyMatrix();
+      renderNetworkGraph(prResults);
+      renderWebsiteCards(oldResults, prResults);
+      renderFormulaInspector();
+    }
+
+    function renderComparisonLists(oldResults, prResults) {
+      const oldRankMap = {};
+      const prRankMap = {};
+      oldResults.forEach(r => { oldRankMap[r.siteId] = r.rank; });
+      prResults.forEach(r => { prRankMap[r.siteId] = r.rank; });
+
+      // Render LEFT: Old Google-Style System
+      const oldContainer = document.getElementById('oldRankingList');
+      oldContainer.innerHTML = oldResults.map(item => {
+        const site = state.sites[item.siteId];
+        const prRank = prRankMap[item.siteId];
+        const shift = item.rank - prRank; // positive means PageRank ranks it higher, negative means PR drops it
+        const significantShift = Math.abs(shift) >= 2;
+
+        return `
+          <div class="rounded-xl p-3.5 border transition ${significantShift ? 'bg-amber-50/70 border-amber-300 shadow-2xs' : 'bg-slate-50/70 border-slate-200/80'}">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-3 min-w-0">
+                <div class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${item.rank === 1 ? 'bg-amber-500 text-white' : 'bg-white border border-slate-300 text-slate-700'}">
+                  #${item.rank}
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${NODE_COLORS[site.id]}"></span>
+                    <span class="font-bold text-sm text-slate-900 truncate">${escapeHtml(site.url)}</span>
+                    ${significantShift ? `<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-200/80 text-amber-900">Big Rank Shift</span>` : ''}
+                  </div>
+                  <p class="text-xs text-slate-600 truncate mt-0.5">${escapeHtml(site.title)}</p>
+                </div>
+              </div>
+
+              <div class="text-right shrink-0">
+                <div class="text-xs font-bold text-amber-800 font-mono">Score: ${item.score}</div>
+                <div class="text-[11px] text-slate-500">Freq: ${item.frequency} hits</div>
+              </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
+              <span>Matches: Title (${item.titleHits}) &bull; Desc (${item.descHits}) &bull; Keys (${item.keywordHits})</span>
+              <span class="font-medium text-slate-600">In PageRank: <strong>#${prRank}</strong></span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Render RIGHT: PageRank-Based System
+      const prContainer = document.getElementById('prRankingList');
+      prContainer.innerHTML = prResults.map(item => {
+        const site = state.sites[item.siteId];
+        const oldRank = oldRankMap[item.siteId];
+        // Delta = Old Rank - PageRank Rank (e.g., Old #5 -> PR #1 = +4 improvement)
+        const rankDelta = oldRank - item.rank;
+        const significantShift = Math.abs(rankDelta) >= 2;
+
+        let badgeHtml = `<span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">— 0</span>`;
+        if (rankDelta > 0) {
+          badgeHtml = `<span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">&#9650; +${rankDelta}</span>`;
+        } else if (rankDelta < 0) {
+          badgeHtml = `<span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">&#9660; ${rankDelta}</span>`;
+        }
+
+        const isDangling = item.outgoingCount === 0;
+
+        return `
+          <div class="rounded-xl p-3.5 border transition ${significantShift ? 'bg-blue-50/70 border-blue-300 shadow-2xs' : 'bg-slate-50/70 border-slate-200/80'}">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-3 min-w-0">
+                <div class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${item.rank === 1 ? 'bg-[#4285F4] text-white' : 'bg-white border border-slate-300 text-slate-700'}">
+                  #${item.rank}
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${NODE_COLORS[site.id]}"></span>
+                    <span class="font-bold text-sm text-slate-900 truncate">${escapeHtml(site.url)}</span>
+                    ${badgeHtml}
+                    ${isDangling ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">Dangling</span>` : ''}
+                  </div>
+                  <p class="text-xs text-slate-600 truncate mt-0.5">${escapeHtml(site.title)}</p>
+                </div>
+              </div>
+
+              <div class="text-right shrink-0">
+                <div class="text-xs font-bold text-blue-700 font-mono">PR: ${item.prScore.toFixed(4)}</div>
+                <div class="text-[11px] text-slate-500">In: ${item.incomingCount} &bull; Out: ${item.outgoingCount}</div>
+              </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
+              <span class="truncate">
+                Cited by: ${item.incomingFrom.length > 0 ? item.incomingFrom.map(id => `W${id + 1}`).join(', ') : 'None'}
+              </span>
+              <span class="font-medium text-slate-600 shrink-0 ml-2">In Old Search: <strong>#${oldRank}</strong></span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderComparisonChart(oldResults, prResults) {
+      const chartEl = document.getElementById('comparisonBarChart');
+      const maxOld = Math.max(...oldResults.map(r => r.score), 1);
+      const maxPr = Math.max(...prResults.map(r => r.prScore), 0.1);
+
+      const oldMap = {};
+      const prMap = {};
+      oldResults.forEach(r => { oldMap[r.siteId] = r; });
+      prResults.forEach(r => { prMap[r.siteId] = r; });
+
+      chartEl.innerHTML = state.sites.map(site => {
+        const oldPct = Math.round((oldMap[site.id].score / maxOld) * 100);
+        const prPct = Math.round((prMap[site.id].prScore / maxPr) * 100);
+
+        return `
+          <div class="grid grid-cols-12 items-center gap-3 text-xs">
+            <div class="col-span-4 sm:col-span-3 flex items-center gap-2 truncate font-medium text-slate-700">
+              <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${NODE_COLORS[site.id]}"></span>
+              <span class="truncate" title="${escapeHtml(site.url)}">W${site.id + 1}: ${escapeHtml(site.url)}</span>
+            </div>
+            <div class="col-span-8 sm:col-span-9 space-y-1">
+              <div class="flex items-center gap-2">
+                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div class="bg-amber-400 h-2 rounded-full transition-all duration-500" style="width: ${oldPct}%"></div>
+                </div>
+                <span class="font-mono text-[11px] text-slate-500 w-16 text-right shrink-0">${oldMap[site.id].score} pts</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div class="bg-[#4285F4] h-2 rounded-full transition-all duration-500" style="width: ${prPct}%"></div>
+                </div>
+                <span class="font-mono text-[11px] text-blue-700 font-semibold w-16 text-right shrink-0">${prMap[site.id].prScore.toFixed(3)}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAdjacencyMatrix() {
+      const table = document.getElementById('adjacencyMatrixTable');
+      let html = `
+        <thead>
+          <tr class="border-b border-slate-200 text-slate-500">
+            <th class="py-1.5 px-1 text-left font-semibold">From \\ To</th>
+            ${state.sites.map(s => `
+              <th class="py-1.5 px-1 font-bold" title="${escapeHtml(s.url)}">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-md text-white text-[11px]" style="background:${NODE_COLORS[s.id]}">
+                  W${s.id + 1}
+                </span>
+              </th>
+            `).join('')}
+            <th class="py-1.5 px-1 text-slate-400 font-medium">Out</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+      `;
+
+      for (let r = 0; r < NUM_SITES; r++) {
+        let outCount = 0;
+        for (let c = 0; c < NUM_SITES; c++) if (state.adjacency[r][c]) outCount++;
+
+        html += `<tr>
+          <td class="py-1.5 px-1 text-left font-semibold text-slate-700 whitespace-nowrap">
+            <span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${NODE_COLORS[r]}"></span>W${r + 1}
+          </td>`;
+
+        for (let c = 0; c < NUM_SITES; c++) {
+          if (r === c) {
+            html += `<td class="py-1.5 px-1 text-slate-300 select-none">&mdash;</td>`;
+          } else {
+            const checked = state.adjacency[r][c] ? 'checked' : '';
+            html += `
+              <td class="py-1.5 px-1">
+                <input
+                  type="checkbox"
+                  ${checked}
+                  data-from="${r}"
+                  data-to="${c}"
+                  aria-label="Link from W${r + 1} to W${c + 1}"
+                  class="matrix-checkbox w-4 h-4 rounded accent-[#4285F4] cursor-pointer"
+                />
+              </td>
+            `;
+          }
+        }
+
+        html += `<td class="py-1.5 px-1 font-mono text-[11px] ${outCount === 0 ? 'text-red-600 font-bold' : 'text-slate-500'}">${outCount}</td></tr>`;
+      }
+
+      html += `</tbody>`;
+      table.innerHTML = html;
+
+      // Attach listeners
+      table.querySelectorAll('.matrix-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const from = Number(e.target.dataset.from);
+          const to = Number(e.target.dataset.to);
+          toggleDirectedLink(from, to);
+        });
+      });
+    }
+
+    function toggleDirectedLink(from, to) {
+      if (from === to) return;
+      state.adjacency[from][to] = !state.adjacency[from][to];
+      const added = state.adjacency[from][to];
+      runPageRankToConvergence();
+      renderAll();
+      showToast(
+        added ? `Added link: W${from + 1} → W${to + 1}` : `Removed link: W${from + 1} → W${to + 1}`,
+        added ? 'bg-emerald-400' : 'bg-amber-400'
+      );
+    }
+
+    /**
+     * INTERACTIVE SVG GRAPH RENDERER
+     */
+    function renderNetworkGraph(prResults) {
+      const edgesLayer = document.getElementById('edgesLayer');
+      const nodesLayer = document.getElementById('nodesLayer');
+
+      const rankMap = {};
+      const outMap = {};
+      prResults.forEach(r => {
+        rankMap[r.siteId] = r.rank;
+        outMap[r.siteId] = r.outgoingCount;
+      });
+
+      // Compute dynamic radius based on PageRank score (min 24px, max 46px)
+      const getNodeRadius = (id) => {
+        const pr = state.pageRanks[id];
+        return Math.max(24, Math.min(46, 22 + pr * 11));
+      };
+
+      // 1. Render Directed Curved Edges
+      let edgesSvg = '';
+      for (let from = 0; from < NUM_SITES; from++) {
+        for (let to = 0; to < NUM_SITES; to++) {
+          if (from === to || !state.adjacency[from][to]) continue;
+
+          const p1 = state.nodePositions[from];
+          const p2 = state.nodePositions[to];
+          const r1 = getNodeRadius(from);
+          const r2 = getNodeRadius(to);
+
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const ux = dx / dist;
+          const uy = dy / dist;
+
+          // Curve offset if bidirectional link exists so arrows don't overlap
+          const isBidirectional = state.adjacency[to][from];
+          const curveOffset = isBidirectional ? 24 : 8;
+          const nx = -uy;
+          const ny = ux;
+
+          const midX = (p1.x + p2.x) / 2 + nx * curveOffset;
+          const midY = (p1.y + p2.y) / 2 + ny * curveOffset;
+
+          // Trim start & end points to node circumferences
+          const startAngle = Math.atan2(midY - p1.y, midX - p1.x);
+          const endAngle = Math.atan2(midY - p2.y, midX - p2.x);
+
+          const sx = p1.x + Math.cos(startAngle) * (r1 + 2);
+          const sy = p1.y + Math.sin(startAngle) * (r1 + 2);
+          const ex = p2.x + Math.cos(endAngle) * (r2 + 5);
+          const ey = p2.y + Math.sin(endAngle) * (r2 + 5);
+
+          const isHighlighted = state.selectedSourceNode === from || state.selectedSourceNode === to;
+          const strokeColor = isHighlighted ? '#4285F4' : '#94a3b8';
+          const marker = isHighlighted ? 'url(#arrowhead-active)' : 'url(#arrowhead)';
+          const pathId = `edge-path-${from}-${to}`;
+
+          edgesSvg += `
+            <g class="cursor-pointer group" onclick="toggleDirectedLink(${from}, ${to})">
+              <path
+                id="${pathId}"
+                d="M ${sx.toFixed(1)} ${sy.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}"
+                fill="none"
+                stroke="${strokeColor}"
+                stroke-width="${isHighlighted ? 2.6 : 2}"
+                marker-end="${marker}"
+                class="graph-edge group-hover:stroke-red-500"
+              />
+              <!-- Invisible wider hit target for easier clicking to remove edge -->
+              <path
+                d="M ${sx.toFixed(1)} ${sy.toFixed(1)} Q ${midX.toFixed(1)} ${midY.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}"
+                fill="none"
+                stroke="transparent"
+                stroke-width="14"
+              />
+            </g>
+          `;
+        }
+      }
+      edgesLayer.innerHTML = edgesSvg;
+
+      // 2. Render Nodes
+      let nodesSvg = '';
+      for (let i = 0; i < NUM_SITES; i++) {
+        const pos = state.nodePositions[i];
+        const r = getNodeRadius(i);
+        const site = state.sites[i];
+        const pr = state.pageRanks[i];
+        const rank = rankMap[i];
+        const isDangling = outMap[i] === 0;
+        const isSelected = state.selectedSourceNode === i;
+        const shortDomain = site.url.replace(/^https?:\/\//, '').split('.')[0].slice(0, 12);
+
+        nodesSvg += `
+          <g class="graph-node cursor-grab active:cursor-grabbing" data-node-id="${i}" transform="translate(${pos.x}, ${pos.y})">
+            ${isSelected ? `<circle r="${r + 7}" fill="none" stroke="#4285F4" stroke-width="2.5" stroke-dasharray="4 3" class="pulse-ring" />` : ''}
+            <circle
+              r="${r}"
+              fill="${NODE_COLORS[i]}"
+              stroke="${isSelected ? '#1e3a8a' : (isDangling ? '#fee2e2' : '#ffffff')}"
+              stroke-width="${isSelected ? 4 : 3}"
+              filter="url(#nodeShadow)"
+              class="graph-node-circle"
+            />
+            <!-- Rank Pill at Top Right of Node -->
+            <g transform="translate(${(r * 0.72).toFixed(1)}, ${(-r * 0.72).toFixed(1)})">
+              <circle r="11" fill="#0f172a" stroke="#ffffff" stroke-width="1.5" />
+              <text text-anchor="middle" dy="3.5" fill="#ffffff" font-size="10" font-weight="700" font-family="Inter, sans-serif">#${rank}</text>
+            </g>
+            <!-- Node Identifier & Score inside Circle -->
+            <text text-anchor="middle" dy="-2" fill="#ffffff" font-size="12" font-weight="800" font-family="Inter, sans-serif">W${i + 1}</text>
+            <text text-anchor="middle" dy="11" fill="rgba(255,255,255,0.92)" font-size="10" font-weight="600" font-family="JetBrains Mono, monospace">${pr.toFixed(2)}</text>
+
+            <!-- Domain Label Below Node -->
+            <rect x="-54" y="${r + 6}" width="108" height="18" rx="6" fill="rgba(255,255,255,0.92)" stroke="#e2e8f0" stroke-width="1" />
+            <text text-anchor="middle" y="${r + 18}" fill="#1e293b" font-size="10.5" font-weight="600" font-family="Inter, sans-serif">
+              ${escapeHtml(shortDomain)}
+            </text>
+          </g>
+        `;
+      }
+      nodesLayer.innerHTML = nodesSvg;
+
+      // Attach pointer drag & click events to nodes
+      nodesLayer.querySelectorAll('.graph-node').forEach(nodeEl => {
+        nodeEl.addEventListener('pointerdown', onNodePointerDown);
+      });
+    }
+
+    // Node Dragging & Click-to-Connect Logic
+    function getSvgPoint(evt) {
+      const svg = document.getElementById('networkSvg');
+      const rect = svg.getBoundingClientRect();
+      const scaleX = 700 / rect.width;
+      const scaleY = 470 / rect.height;
+      return {
+        x: (evt.clientX - rect.left) * scaleX,
+        y: (evt.clientY - rect.top) * scaleY
+      };
+    }
+
+    function onNodePointerDown(evt) {
+      evt.stopPropagation();
+      const nodeId = Number(evt.currentTarget.dataset.nodeId);
+      state.draggingNodeId = nodeId;
+      state.dragMoved = false;
+
+      const onPointerMove = (moveEvt) => {
+        if (state.draggingNodeId === null) return;
+        state.dragMoved = true;
+        const pt = getSvgPoint(moveEvt);
+        state.nodePositions[state.draggingNodeId] = {
+          x: Math.max(55, Math.min(645, Math.round(pt.x))),
+          y: Math.max(55, Math.min(405, Math.round(pt.y)))
+        };
+        renderNetworkGraph(getPageRankResults());
+      };
+
+      const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+
+        const clickedNode = state.draggingNodeId;
+        state.draggingNodeId = null;
+
+        // If user clicked without dragging, handle Click-to-Link interaction
+        if (!state.dragMoved && clickedNode !== null) {
+          handleNodeClickForLinking(clickedNode);
+        }
+      };
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    }
+
+    function handleNodeClickForLinking(nodeId) {
+      const bar = document.getElementById('graphInstructionBar');
+      const cancelBtn = document.getElementById('cancelSelectionBtn');
+      const modeLabel = document.getElementById('linkModeLabel');
+
+      // Also update Live Formula Inspector to this clicked node
+      state.inspectedSiteId = nodeId;
+      renderFormulaInspector();
+
+      if (state.selectedSourceNode === null) {
+        state.selectedSourceNode = nodeId;
+        modeLabel.textContent = `Source: W${nodeId + 1} → Pick Target`;
+        bar.querySelector('span').innerHTML = `Selected <strong>W${nodeId + 1} (${escapeHtml(state.sites[nodeId].url)})</strong> as Source. Click any target node to toggle a link!`;
+        cancelBtn.classList.remove('hidden');
+        renderNetworkGraph(getPageRankResults());
+      } else if (state.selectedSourceNode === nodeId) {
+        // Deselect
+        clearNodeSelection();
+      } else {
+        const from = state.selectedSourceNode;
+        const to = nodeId;
+        clearNodeSelection();
+        toggleDirectedLink(from, to);
+      }
+    }
+
+    function clearNodeSelection() {
+      state.selectedSourceNode = null;
+      document.getElementById('linkModeLabel').textContent = 'Click-to-Link: Ready';
+      document.getElementById('graphInstructionBar').querySelector('span').innerHTML =
+        'Tip: Click any website circle to select it as a <strong>Source</strong>, then click a second website to toggle a directed arrow.';
+      document.getElementById('cancelSelectionBtn').classList.add('hidden');
+      renderNetworkGraph(getPageRankResults());
+    }
+
+    /**
+     * ANIMATE PAGERANK FLOW PARTICLES ALONG DIRECTED ARROWS
+     */
+    function animatePageRankFlow() {
+      const particlesLayer = document.getElementById('particlesLayer');
+      particlesLayer.innerHTML = '';
+
+      // Compute outgoing counts
+      const outCounts = Array(NUM_SITES).fill(0);
+      for (let i = 0; i < NUM_SITES; i++) {
+        for (let j = 0; j < NUM_SITES; j++) {
+          if (state.adjacency[i][j]) outCounts[i]++;
+        }
+      }
+
+      const activeEdges = [];
+      for (let from = 0; from < NUM_SITES; from++) {
+        for (let to = 0; to < NUM_SITES; to++) {
+          if (from !== to && state.adjacency[from][to]) {
+            const pathEl = document.getElementById(`edge-path-${from}-${to}`);
+            if (pathEl) {
+              const flowWeight = state.pageRanks[from] / (outCounts[from] || 1);
+              activeEdges.push({ from, to, pathEl, flowWeight });
+            }
+          }
+        }
+      }
+
+      if (activeEdges.length === 0) {
+        showToast('Add some links first to animate PageRank flow!', 'bg-amber-400');
+        return;
+      }
+
+      showToast('Animating PageRank authority flow along links...', 'bg-emerald-400');
+
+      const duration = 1400; // ms
+      const startTime = performance.now();
+
+      // Create SVG circle particles proportional in radius to PR(Ti)/C(Ti)
+      const particles = activeEdges.map(edge => {
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        const radius = Math.max(4, Math.min(10, 3.5 + edge.flowWeight * 4.5));
+        circle.setAttribute('r', radius.toFixed(1));
+        circle.setAttribute('fill', NODE_COLORS[edge.from]);
+        circle.setAttribute('stroke', '#ffffff');
+        circle.setAttribute('stroke-width', '1.5');
+        particlesLayer.appendChild(circle);
+        return {
+          ...edge,
+          circle,
+          totalLen: edge.pathEl.getTotalLength()
+        };
+      });
+
+      function stepAnimation(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / duration);
+        // Ease in-out cubic
+        const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+        particles.forEach(p => {
+          const pt = p.pathEl.getPointAtLength(ease * p.totalLen);
+          p.circle.setAttribute('cx', pt.x.toFixed(1));
+          p.circle.setAttribute('cy', pt.y.toFixed(1));
+          p.circle.setAttribute('opacity', t > 0.88 ? ((1 - t) / 0.12).toFixed(2) : '1');
+        });
+
+        if (t < 1) {
+          requestAnimationFrame(stepAnimation);
+        } else {
+          particlesLayer.innerHTML = '';
+        }
+      }
+
+      requestAnimationFrame(stepAnimation);
+    }
+
+    /**
+     * LIVE FORMULA INSPECTOR
+     */
+    function renderFormulaInspector() {
+      const select = document.getElementById('inspectorSiteSelect');
+      select.innerHTML = state.sites.map(s =>
+        `<option value="${s.id}" ${s.id === state.inspectedSiteId ? 'selected' : ''}>W${s.id + 1}: ${escapeHtml(s.url)}</option>`
+      ).join('');
+
+      const a = state.inspectedSiteId;
+      const d = state.damping;
+      const N = NUM_SITES;
+
+      const outCounts = Array(N).fill(0);
+      let danglingSum = 0;
+      for (let i = 0; i < N; i++) {
+        let c = 0;
+        for (let j = 0; j < N; j++) if (state.adjacency[i][j]) c++;
+        outCounts[i] = c;
+        if (c === 0) danglingSum += state.pageRanks[i];
+      }
+
+      const incomingTerms = [];
+      let incomingSum = 0;
+      for (let ti = 0; ti < N; ti++) {
+        if (state.adjacency[ti][a]) {
+          const termVal = state.pageRanks[ti] / outCounts[ti];
+          incomingSum += termVal;
+          incomingTerms.push(`PR(W${ti + 1})/${outCounts[ti]} [${state.pageRanks[ti].toFixed(3)}/${outCounts[ti]}]`);
+        }
+      }
+
+      const danglingShare = danglingSum / N;
+      const computed = (1 - d) + d * (incomingSum + danglingShare);
+
+      const box = document.getElementById('liveEquationBox');
+      box.innerHTML = `
+        <div class="text-blue-300 font-semibold mb-1">PR(W${a + 1}) = (1 - ${d.toFixed(2)}) + ${d.toFixed(2)} &times; [ Incoming + DanglingShare ]</div>
+        <div>&bull; Teleport base (1 - d): <span class="text-emerald-400">${(1 - d).toFixed(4)}</span></div>
+        <div>&bull; Incoming links (&Sigma; PR(Ti)/C(Ti)): <span class="text-amber-300">${incomingTerms.length ? incomingTerms.join(' + ') : '0 (No incoming links)'}</span> = <span class="text-white">${incomingSum.toFixed(4)}</span></div>
+        <div>&bull; Dangling pool share (&Sigma;PR_dangling / 6): <span class="text-purple-300">${danglingShare.toFixed(4)}</span></div>
+        <div class="mt-1.5 pt-1.5 border-t border-slate-800 text-sm font-bold text-white">
+          &rArr; PR(W${a + 1}) = <span class="text-blue-400">${computed.toFixed(4)}</span>
+        </div>
+      `;
+    }
+
+    /**
+     * 6 WEBSITE EDITOR CARDS
+     */
+    function renderWebsiteCards(oldResults, prResults) {
+      const grid = document.getElementById('websiteCardsGrid');
+      const oldMap = {};
+      const prMap = {};
+      oldResults.forEach(r => { oldMap[r.siteId] = r; });
+      prResults.forEach(r => { prMap[r.siteId] = r; });
+
+      grid.innerHTML = state.sites.map(site => {
+        const oldInfo = oldMap[site.id];
+        const prInfo = prMap[site.id];
+
+        return `
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs hover:border-blue-300 transition flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <div class="flex items-center gap-2">
+                  <span class="w-7 h-7 rounded-lg text-white font-bold text-xs flex items-center justify-center shadow-2xs" style="background:${NODE_COLORS[site.id]}">
+                    W${site.id + 1}
+                  </span>
+                  <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Website #${site.id + 1}</span>
+                </div>
+                <div class="flex items-center gap-1.5 text-[11px] font-mono">
+                  <span class="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200" title="Old Search Rank">Old #${oldInfo.rank}</span>
+                  <span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold" title="PageRank Rank">PR #${prInfo.rank}</span>
+                </div>
+              </div>
+
+              <div class="space-y-2.5 text-xs">
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Website URL</label>
+                  <input
+                    type="text"
+                    value="${escapeAttr(site.url)}"
+                    data-site-id="${site.id}"
+                    data-field="url"
+                    class="site-input w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Page Title (3&times; Keyword Weight)</label>
+                  <input
+                    type="text"
+                    value="${escapeAttr(site.title)}"
+                    data-site-id="${site.id}"
+                    data-field="title"
+                    class="site-input w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Meta Description (2&times; Keyword Weight)</label>
+                  <textarea
+                    rows="2"
+                    data-site-id="${site.id}"
+                    data-field="description"
+                    class="site-input w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 focus:outline-none focus:border-blue-500 resize-none"
+                  >${escapeHtml(site.description)}</textarea>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Keywords &amp; Body Content (1&times; Weight)</label>
+                  <input
+                    type="text"
+                    value="${escapeAttr(site.keywords)}"
+                    data-site-id="${site.id}"
+                    data-field="keywords"
+                    class="site-input w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+              <span>In: ${prInfo.incomingCount} | Out: ${prInfo.outgoingCount}</span>
+              <span class="text-blue-700 font-semibold">PR: ${prInfo.prScore.toFixed(4)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Attach live input listeners
+      grid.querySelectorAll('.site-input').forEach(el => {
+        el.addEventListener('input', (e) => {
+          const id = Number(e.target.dataset.siteId);
+          const field = e.target.dataset.field;
+          state.sites[id][field] = e.target.value;
+          // Update rankings & graph without destroying focused input element
+          const oldRes = computeOldSearchResults();
+          const prRes = getPageRankResults();
+          renderComparisonLists(oldRes, prRes);
+          renderComparisonChart(oldRes, prRes);
+          renderAdjacencyMatrix();
+          renderNetworkGraph(prRes);
+          renderFormulaInspector();
+        });
+      });
+    }
+
+    // HTML Escaping Utilities
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(str) {
+      return String(str).replace(/"/g, '&quot;');
+    }
+
+    /**
+     * EVENT LISTENERS & INITIALIZATION
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      // Search input & Compare button
+      const searchInput = document.getElementById('searchInput');
+      searchInput.addEventListener('input', (e) => {
+        state.query = e.target.value;
+        renderAll();
+      });
+
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          document.getElementById('comparison-section').scrollIntoView({ behavior: 'smooth' });
+          showToast(`Compared rankings for "${state.query}"`, 'bg-blue-400');
+        }
+      });
+
+      document.getElementById('clearSearchBtn').addEventListener('click', () => {
+        searchInput.value = '';
+        state.query = '';
+        searchInput.focus();
+        renderAll();
+      });
+
+      document.getElementById('compareBtn').addEventListener('click', () => {
+        state.query = searchInput.value;
+        runPageRankToConvergence();
+        renderAll();
+        document.getElementById('comparison-section').scrollIntoView({ behavior: 'smooth' });
+        showToast('Algorithms compared & updated!', 'bg-blue-400');
+      });
+
+      // Query chips
+      document.querySelectorAll('.query-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          state.query = chip.dataset.query;
+          searchInput.value = state.query;
+          renderAll();
+          showToast(`Searched for "${state.query}"`, 'bg-blue-400');
+        });
+      });
+
+      // Preset buttons
+      document.getElementById('presetSpamBtn').addEventListener('click', () => loadPreset('spam'));
+      document.getElementById('presetDanglingBtn').addEventListener('click', () => loadPreset('dangling'));
+      document.getElementById('presetHubBtn').addEventListener('click', () => loadPreset('hub'));
+
+      // Damping factor slider
+      document.getElementById('dampingSlider').addEventListener('input', (e) => {
+        state.damping = parseFloat(e.target.value);
+        document.getElementById('dampingValueLabel').textContent = state.damping.toFixed(2);
+        runPageRankToConvergence();
+        renderAll();
+      });
+
+      // Step-by-step PageRank controls
+      document.getElementById('resetPrBtn').addEventListener('click', () => {
+        resetPageRankValues();
+        renderAll();
+        showToast('Reset all PageRank scores to 1.0000 (Iteration 0)', 'bg-slate-400');
+      });
+
+      document.getElementById('stepPrBtn').addEventListener('click', () => {
+        const delta = performSinglePageRankStep();
+        renderAll();
+        showToast(`Iteration ${state.iterations} complete (max Δ = ${delta.toExponential(2)})`, 'bg-blue-400');
+      });
+
+      document.getElementById('convergePrBtn').addEventListener('click', () => {
+        runPageRankToConvergence();
+        renderAll();
+        showToast(`Converged in ${state.iterations} iterations!`, 'bg-emerald-400');
+      });
+
+      // Graph Toolbar actions
+      document.getElementById('animateFlowBtn').addEventListener('click', animatePageRankFlow);
+      document.getElementById('animateFlowHeroBtn').addEventListener('click', () => {
+        document.getElementById('graph-section').scrollIntoView({ behavior: 'smooth' });
+        setTimeout(animatePageRankFlow, 450);
+      });
+
+      document.getElementById('resetLayoutBtn').addEventListener('click', () => {
+        state.nodePositions = computeDefaultCirclePositions();
+        renderNetworkGraph(getPageRankResults());
+        showToast('Reset graph node layout', 'bg-slate-400');
+      });
+
+      document.getElementById('clearAllLinksBtn').addEventListener('click', () => {
+        state.adjacency = Array.from({ length: NUM_SITES }, () => Array(NUM_SITES).fill(false));
+        clearNodeSelection();
+        runPageRankToConvergence();
+        renderAll();
+        showToast('Cleared all hyperlinks (all nodes now dangling)', 'bg-amber-400');
+      });
+
+      document.getElementById('cancelSelectionBtn').addEventListener('click', clearNodeSelection);
+
+      // Inspector site selector
+      document.getElementById('inspectorSiteSelect').addEventListener('change', (e) => {
+        state.inspectedSiteId = Number(e.target.value);
+        renderFormulaInspector();
+      });
+
+      // Educational section tabs
+      document.querySelectorAll('.edu-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.edu-tab').forEach(t => {
+            t.classList.remove('tab-active');
+            t.classList.add('text-slate-600');
+          });
+          tab.classList.add('tab-active');
+          tab.classList.remove('text-slate-600');
+
+          const targetId = tab.dataset.tab;
+          document.querySelectorAll('.edu-panel').forEach(panel => {
+            panel.classList.toggle('hidden', panel.id !== targetId);
+          });
+        });
+      });
+
+      // Boot with the Keyword Stuffing Spam vs Authority preset
+      loadPreset('spam', true);
+    });
+  </script>
+</body>
+</html>
